@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <title>CDBF 360° - Dashboard Jurisprudence</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        :root {
+            --blue-dark: #1E2A47;
+            --blue-light: #234070;
+            --jo-green: #1b5e20; 
+            --red-alert: #d32f2f; 
+            --relax-gold: #C5A028; 
+            --bg-gray: #f8f9fa;
+            --purple-cassation: #673ab7;
+        }
+
+        body { margin: 0; font-family: "Marianne", system-ui, sans-serif; background-color: var(--bg-gray); overflow: hidden; }
+        
+        #hero-section {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100vh;
+            background: linear-gradient(135deg, rgba(30, 42, 71, 0.7), rgba(30, 42, 71, 0.6)), 
+                        url('cour_des_comptes.png') no-repeat center;
+            background-size: cover; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            color: white; z-index: 9999; transition: opacity 0.5s; text-align: center;
+            padding: 20px;
+        }
+
+        header {
+            height: 70px; background: white; border-bottom: 1px solid #e0e0e0;
+            display: flex; align-items: center; justify-content: center;
+            padding: 0 30px; position: relative; z-index: 5000;
+        }
+
+        .header-title {
+            position: absolute; left: 30px; font-weight: 900; color: var(--blue-dark); 
+            font-size: 1.3rem; cursor:pointer;
+        }
+
+        .search-container { position: relative; flex: 0 1 500px; }
+        .search-input { width: 100%; padding: 10px 20px; border-radius: 8px; border: 1px solid #ddd; font-size: 1rem; outline: none; }
+        
+        .search-results {
+            position: absolute; top: 55px; left: 0; width: 100%;
+            background: white; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            max-height: 400px; overflow-y: auto; display: none; z-index: 10000;
+        }
+
+        #main-layout { display: flex; height: calc(100vh - 70px); width: 100vw; }
+        #map-container { flex: 1; position: relative; background: #eee; }
+        #map { height: 100%; width: 100%; }
+
+        #side-panel {
+            width: 400px; background: white; border-left: 1px solid #ddd;
+            display: flex; flex-direction: column; transition: 0.3s;
+            box-shadow: -5px 0 15px rgba(0,0,0,0.05); z-index: 2000;
+        }
+
+        .panel-header { 
+            padding: 15px 20px; 
+            border-bottom: 1px solid #eee; 
+            display: flex; 
+            align-items: center; 
+            justify-content: space-between; 
+            background: #fafafa;
+        }
+
+        .panel-body { padding: 25px; overflow-y: auto; flex: 1; }
+
+        #map-legend {
+            position: absolute; top: 20px; left: 20px;
+            background: white; padding: 15px; border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); z-index: 1000;
+            font-size: 0.85rem; width: 280px;
+        }
+
+        .badge { padding: 3px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; margin-left: 5px; border: 1px solid transparent; text-transform: uppercase; white-space: nowrap; }
+        .badge-jo { color: var(--jo-green); border-color: var(--jo-green); }
+        .badge-nonjo { color: var(--red-alert); border-color: var(--red-alert); }
+        .badge-relax { color: var(--relax-gold); border-color: var(--relax-gold); }
+        .badge-cassation { color: var(--purple-cassation); border-color: var(--purple-cassation); }
+
+        .result-item { padding: 12px; border-bottom: 1px solid #eee; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+        .result-item:hover { background: #f0f4ff; }
+        
+        .legend-item { display: flex; align-items: center; margin-bottom: 10px; cursor: pointer; font-weight: 500; }
+        .dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 10px; }
+
+        .stat-card { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid var(--blue-dark); }
+        .stat-val { display: block; font-size: 1.5rem; font-weight: 900; color: var(--blue-dark); }
+        .stat-label { font-size: 0.75rem; color: #666; text-transform: uppercase; }
+        
+        .btn-dashboard { 
+            background: var(--blue-dark); 
+            color: white; 
+            border: none; 
+            padding: 8px 15px; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="hero-section">
+        <h1 style="font-size: 3rem; margin-bottom: 15px; font-weight: 900;">CDBF 360°</h1>
+        <p style="font-size: 1rem; max-width: 800px; line-height: 1.5; opacity: 1; font-weight: 500;">
+            Analyse géographique des décisions rendues en vertu de l'ancien article L. 313-4 du CJF de 2009 à 2016
+        </p>
+        <button onclick="enterSite()" style="margin-top: 40px; padding: 18px 45px; background: white; color: var(--blue-dark); border: none; border-radius: 50px; font-weight: 900; cursor: pointer; box-shadow: 0 10px 20px rgba(0,0,0,0.2);">
+            DÉMARRER L'ANALYSE
+        </button>
+    </div>
+
+    <header>
+        <div class="header-title" onclick="location.reload()">CDBF <span style="font-weight: 300;">360°</span></div>
+        <div class="search-container">
+            <input type="text" id="searchBox" class="search-input" placeholder="Rechercher une affaire, un CH, une ville...">
+            <div id="resultsBox" class="search-results"></div>
+        </div>
+    </header>
+
+    <div id="main-layout">
+        <div id="map-container">
+            <div id="map"></div>
+            <div id="map-legend">
+                <label class="legend-item" style="color: var(--blue-dark); border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px;">
+                    <input type="checkbox" id="filter-defere" onchange="updateMarkers()"> &nbsp;Regrouper par CRTC ayant déféré l'affaire à la CDBF
+                </label>
+                <label class="legend-item"><input type="checkbox" id="f-jo" checked onchange="updateMarkers()"> <span class="dot" style="background-color: var(--jo-green);"></span> Publiées au J.O.</label>
+                <label class="legend-item"><input type="checkbox" id="f-nonjo" checked onchange="updateMarkers()"> <span class="dot" style="background-color: var(--red-alert);"></span> Non publiées au J.O.</label>
+                <label class="legend-item"><input type="checkbox" id="f-relax" checked onchange="updateMarkers()"> <span class="dot" style="background-color: var(--relax-gold);"></span> Relaxes</label>
+            </div>
+        </div>
+
+        <div id="side-panel">
+            <div class="panel-header">
+                <span id="panel-title" style="font-weight: bold; color: var(--blue-dark);">TABLEAU DE BORD</span>
+                <button onclick="closePanel()" style="border:none; background:none; font-size:1.5rem; cursor:pointer;">&times;</button>
+            </div>
+            <div id="panel-body" class="panel-body"></div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const allDecisions = [
+            { title: "CH de Fougère", year: "16/04/2009", crc: "CRC BRETAGNE", realCoords: [48.3518, -1.2019], crcCoords: [48.1172, -1.6777], num: "n°165-617", jo: false, isDefere: true, isRelax: true, amende: "Relaxe", gestionnaires: "Directeur d'hôpital et directrice des affaires sanitaires et sociales", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/Arret_165-617_CentreHospitalierFougeres_ANO.pdf" },
+            { title: "UNIPE-PE et UNIPE-IP", year: "06/05/2009", crc: "CDBF", realCoords: [48.8566, 2.3522], num: "n°166-586", jo: true, isDefere: false, isRelax: false, amende: "3000", law: "Art. L. 313-4 et L. 313-6 du CJF", gestionnaires: "Président d'association", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/Arret_166-586-624_UNIPE_ANO.pdf" },
+            { title: "Ecole Régionale pour Déficients Visuels (ERDV)", year: "03/07/2009", crc: "CRC HAUTS-DE-FRANCE", realCoords: [50.6128, 3.0145], crcCoords: [50.2910, 2.7775], num: "n°167-610", jo: true, isDefere: true, isRelax: false, amende: "300", law: "Art. L. 313-4 du CJF", gestionnaires: "Chef d'établissement", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/Arret_167_610_ERDV.pdf" },
+            { title: "CCI Nice Côte d'Azur", year: "23/07/2009", crc: "CRC PACA", realCoords: [43.7034, 7.2663], crcCoords: [43.2965, 5.3698], num: "n°168-622", jo: false, isDefere: true, isRelax: false, amende: "800", law: "Art. L. 313-4 et L. 313-6 du CJF", gestionnaires: "Président de la CCI et directeur général de la CCI", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/Arret_168_622_ano_CCINice.pdf" },
+            { title: "CCI Paris", year: "27/11/2009", crc: "CDBF", realCoords: [48.8719, 2.3314], num: "n°169-570", jo: true, isDefere: false, isRelax: false, amende: "1800", law: "Art. L. 313-4 et L. 313-6 du CJF", gestionnaires: "Président de la CCI, trésorier de la CCI, directeur général de la CCI et DRH", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/Arret_169-570_ano_CCIP.pdf" },
+            { title: "CHU de Reims", year: "11/12/2009", crc: "CRC GRAND-EST", realCoords: [49.2435, 4.0253], crcCoords: [49.1193, 6.1757], num: "n°170-652", jo: false, isDefere: true, isRelax: false, amende: "300", law: "Art. L. 313-4 du CJF", gestionnaires: "Directeur d'hôpital", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/Arret_170_652_ano_CHUDeReims.pdf" },
+            { title: "SIEMP", year: "25/11/2010", crc: "CRC ÎLE-DE-FRANCE", realCoords: [48.8620, 2.3450], crcCoords: [48.8672, 2.3243], num: "n°171-603", jo: true, isDefere: true, isRelax: false, amende: "1000", law: "Art. L. 313-4 CJF", gestionnaires: "Directrice de la gérance de la SIEMP ", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/Arret_171-603_SIEMP_ano_VD.pdf" },
+            { title: "Commune de Bandol", year: "10/12/2010", crc: "CRC PACA", realCoords: [43.1365, 5.7538], crcCoords: [43.2965, 5.3698], num: "n°172-680", jo: true, isDefere: true, isRelax: false, amende: "1100", law: "Art. L. 313-4 du CJF", gestionnaires: "régisseur d'avances, 2 trésoriers,", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/Arret_172-680_Bandol_anoVD.pdf" },
+            { title: "CRAMP", year: "22/12/2010", crc: "CDBF", realCoords: [48.8600, 2.3400], num: "n°173-666", jo: true, isDefere: false, isRelax: false, amende: "2000", law: "Art. L. 313-4 et L. 313-6 du CJF", gestionnaires: "Président Chambre d'agriculture ", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/Arret_173_666_CRAMP_VD_ano.pdf" },
+            { title: "Lycée polyvalent,lycée Vauvenargues et GRETA du pays d'Aix", year: "04/04/2011", crc: "CRC PACA", realCoords: [43.5297, 5.4474], crcCoords: [43.2965, 5.3698], num: "n°174-647/667", jo: true, isDefere: true, isRelax: false, amende: "2000", law: "Art. L. 313-3 et L. 313-4 du CJF", gestionnaires: "agent comptable gestionnaire de lycées", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/Arret_174-647-667_Vauvenargues_Ano.pdf" },
+            { title: "Institut géographique national (IGN)", year: "17/06/2011", crc: "CDBF", realCoords: [48.8465, 2.4180], num: "n°176-655", jo: true, isDefere: false, isRelax: false, amende: "2150", law: "Art. L. 313-1, L. 313-3 et L. 313-4 du CJF", gestionnaires: "Directeur, secrétaire générale, directrice de communication",url: "https://www.ccomptes.fr/sites/default/files/EzPublish/20110617-arret-176-655-IGN.pdf", ceUrl: "https://www.legifrance.gouv.fr/ceta/id/CETATEXT000027942375" },
+            { title: "Rectorat Paris", year: "13/07/2011", crc: "CDBF", realCoords: [48.8475, 2.3444], num: "n°177-684", jo: true, isDefere: false, isRelax: false, amende: "700", law: "Art. L. 313-4 et L. 313-6 du CJF", gestionnaires: "directeur de cabinet du ministre de l'éducation nationale, recteur d'académie", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/Arret_177-684_IAP_13juillet2011_anonymise.pdf" },
+            { title: "GH Sud Réunion", year: "09/12/2011", crc: "CDBF", realCoords: [-21.3381, 55.4714], num: "n°180-656", jo: true, isDefere: false, isRelax: false, amende: "20000", law: "Art. L. 313-4 du CJF", gestionnaires: " 2 DH", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/Arret_180-656_9-12-2011_GHSR_VD_clair.pdf" },
+            { title: "CH Marigot à St-Martin", year: "20/03/2012", crc: "CDBF", realCoords: [18.0667, -63.0833], num: "n°181-587", jo: true, isDefere: false, isRelax: false, amende: "4000", law: "Art. L. 313-4 et L. 313-6 du CJF", gestionnaires: "Directeur d'hôpital, comptable",recours: "rejet préalable (L. 822-1 CJA)",url: "https://www.ccomptes.fr/sites/default/files/EzPublish/Arret_181-587_20032012.pdf" },
+            { title: "Conseil économique et social (CES)", year: "23/04/2012", crc: "CDBF", realCoords: [48.8566, 2.3522], num: "n°182-682", jo: true, isDefere: false, isRelax: false, amende: "5500", law: "Art. L. 313-2, L. 313-4 du CJF", gestionnaires: "secrétaire général président", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/Arret-182-682_CES_23-04-12_0.pdf", ceUrl: "https://www.legifrance.gouv.fr/ceta/id/CETATEXT000028411876?isSuggest=true" },
+            { title: "Action sociale des armées", year: "21/06/2012", crc: "CDBF", realCoords: [48.8650, 2.3300], num: "n°183-697", jo: false, isDefere: false, isRelax: true, amende: "Relaxe", gestionnaires: "chef de service, sous-directeur de l'action sociale", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/arret_183_697_action_sociale_armees.pdf" },
+            { title: "Grand port maritime du Havre", year: "23/07/2012", crc: "CDBF", realCoords: [49.4900, 0.1200], num: "n°184-691", jo: false, isDefere: false, isRelax: true, amende: "Relaxe", gestionnaires: "Directeurs de port, agent comptable et directeur financier, agents du service finances et comptabilité", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/arret_184_691_grand_port_maritime_du_havre.pdf" },
+            { title: "Port autonome de Marseille", year: "22/10/2012", crc: "CDBF", realCoords: [43.3000, 5.3700], num: "n°185-692", jo: true, isDefere: false, isRelax: false, amende: "7000", law: "Art. L. 313-3 et L. 313-4 du CJF", gestionnaires: "Directeurs de port, directeur général adjoint, directeur des services généraux, directeurs des opérations, chef de service, secrétaire général ",recours: "rejet préalable (L. 822-1 CJA)",url: "https://www.ccomptes.fr/sites/default/files/EzPublish/arret_185_692_port_autonome_de_marseille.pdf" },
+            { title: "ANPE", year: "16/11/2012", crc: "CDBF", realCoords: [48.8500, 2.3600], num: "n°186-639", jo: true, isDefere: false, isRelax: false, amende: "2000", law: "Art. L. 313-4 du CJF", gestionnaires: "Directeur général", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/186-639_ANPE_16-11-2012.pdf" },
+            { title: "Ecole nationale d'équitation (ENE)", year: "18/12/2012", crc: "CDBF", realCoords: [47.2600, -0.0700], num: "n°187-699", jo: true, isDefere: false, isRelax: false, amende: "1900", law: "Art. L. 313-4 et L. 313-6 du CJF", gestionnaires: "Directeurs d'EP, secrétaire générale", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/arret_187_699_ecole_nationale_equitation_18122012.pdf" },
+            { title: "Secrétariat d'État Sports", year: "23/02/2013", crc: "CDBF", realCoords: [48.8450, 2.3200], num: "n°188-712", jo: true, isDefere: false, isRelax: false, amende: "900", law: "Art. L. 313-3 et L. 313-4 du CJF", gestionnaires: "Directeur du cabinet de la secrétaire d'Etat chargé des sports, Directeur adjoint du cabinet du ministre de la Santé et des sports, Conseiller auprès de la secrétaire d'Etat chargé des sports, Conseiller technique chargé du sport professionnel et fédération non olympique", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/20130321_arret_188_712_secretariat_Etat_charge_des_sports.pdf" },
+            { title: "CH intercommunal de la Lauter", year: "17/06/2013", crc: "CRC GRAND-EST", realCoords: [48.9739, 7.9400], crcCoords: [49.1193, 6.1757], num: "n°189-683", jo: true, isDefere: true, isRelax: false, amende: "1000", law: "Art. L. 313-3, L. 313-4 et L. 313-6 du CJF", gestionnaires: "Directeur d'hôpital",recours: "rejet préalable (L. 822-1 CJA)",url: "https://www.ccomptes.fr/sites/default/files/EzPublish/20130617_arret_189_683_Centre_hospitalier_intercommunal_Lauter_Wissembourg.pdf" },
+            { title: "OPT de la Polynésie", year: "15/07/2013", crc: "CTC POLYNÉSIE", realCoords: [-17.5350, -149.5667], crcCoords: [-17.5516, -149.5585], num: "n°190-661", jo: true, isDefere: true, isRelax: false, amende: "20000", law: "Art. L. 313-3, L. 313-4 et L. 313-6 du CJF", gestionnaires: "Président de l'EP", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/20130715_arret_190_661_OPT_polynesie_fran--aise.pdf" },
+            { title: "Maison de retraite intercommunale de Champcevrais", year: "01/10/2013", crc: "CRC BOURGOGNE", realCoords: [47.7419, 2.9583], crcCoords: [47.3220, 5.0415], num: "n°191-701", jo: true, isDefere: true, isRelax: false, amende: "300", law: "Art. L. 313-4 du CJF ", gestionnaires: "Directeur d'EHPAD (D3S)", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/20131011_arret_191-701_maison_retraite_intercommunale_Champcevrais.pdf" },
+            { title: "SOVAFIM", year: "17/06/2014", crc: "CDBF", realCoords: [48.8700, 2.3400], num: "n°193-696", jo: true, isDefere: false, isRelax: false, amende: "1500", law: "Art. L. 313-4 du CJF ", gestionnaires: "Président-directeur général (PDG) de la S.A", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/20140617_Arret_193_696_SOVAFIM.pdf" },
+            { title: "CHU de Caen", year: "06/10/2014", crc: "CRC NORMANDIE", realCoords: [49.2052, -0.3600], crcCoords: [49.4431, 1.0993], num: "n°195-686/704", jo: true, isDefere: true, isRelax: false, amende: "7300", law: "Art. L. 313-4 et L. 313-6 du CJF", gestionnaires: "3 DH", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/20141006_arret_195_686_704_CHU_Caen.pdf" },
+            { title: "Maison de retraite publique de Vertheuil", year: "08/12/2014", crc: "CRC NOUVELLE-AQUITAINE", realCoords: [45.2503, -0.8353], crcCoords: [44.8378, -0.5792], num: "n°196-718", jo: true, isDefere: true, isRelax: false, amende: "2500", law: "Art. L. 313-4 du CJF", gestionnaires: "Directeur d'EHPAD (D3S), agent comptable", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/20141208_arret_196_718_maison_retraite_publique_Vertheuil.pdf" },
+            { title: "EP Campus de Jussieu", year: "22/01/2015", crc: "CDBF", realCoords: [48.8470, 2.3550], num: "n°197-713", jo: true, isDefere: false, isRelax: false, amende: "2000", law: "Art. L. 313-3 et L. 313-4 du CJF", gestionnaires: "Directeur d'EP", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/20150122_arret_197_713_EPCJ.pdf" },
+            { title: "EPCC l'Autre Canal", year: "10/04/2015", crc: "CRC GRAND-EST", realCoords: [48.6936, 6.1950], crcCoords: [49.1193, 6.1757], num: "n°198-719", jo: true, isDefere: true, isRelax: false, amende: "2600", law: "Art. L. 313-4 du CJF", gestionnaires: "Directeur d'établissement, comptable et 2 régisseurs", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/20150410-arret-198-719-EPCC-lautre-canal.pdf" },
+            { title: "Entreprise minière et chimique (EMC)", year: "12/05/2015", crc: "CDBF", realCoords: [48.8800, 2.3200], num: "n°199-731", jo: true, isDefere: false, isRelax: false, amende: "2000", law: "Art. L. 313-4 du CJF", gestionnaires: "Président de S.A", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/20150512-arret-199-731-EMC.pdf" },
+            { title: "Grand port maritime de Nantes", year: "16/06/2015", crc: "CDBF", realCoords: [47.2100, -1.5600], num: "n°200-728", jo: true, isDefere: false, isRelax: false, amende: "2500", law: "Art. L. 313-4 et L. 313-6 du CJF", gestionnaires: "Directeur de port, Directeur de port par intérim, secrétaire général", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/20150616-arret-200-728-GPMNSN.pdf" },
+            { title: "AP-HM", year: "17/07/2015", crc: "CRC PACA", realCoords: [43.2900, 5.4000], crcCoords: [43.2965, 5.3698], num: "n°201-721", jo: false, isDefere: true, isRelax: true, amende: "Relaxe", gestionnaires: "Directeurs d'hôpitaux", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/20150717-arret-201-721-AP-HM.pdf", ceUrl: "https://www.legifrance.gouv.fr/ceta/id/CETATEXT000033255661?isSuggest=true" },
+            { title: "SADEV 94", year: "13/10/2015", crc: "CRC ÎLE-DE-FRANCE", realCoords: [48.8100, 2.4500], crcCoords: [48.8672, 2.3243], num: "n°202-725", jo: true, isDefere: true, isRelax: false, amende: "2000", law: "Art. L. 313-4 et L. 313-6 du CJF", gestionnaires: "Président du conseil d'administration, directeur général", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/20151013-arret-202-725-SADEV-94.pdf" },
+            { title: "Association pour la gestion du régime d'assurance des créances des salariés (AGS)", year: "16/11/2015", crc: "CDBF", realCoords: [48.8789, 2.3125], num: "n°203-720", jo: true, isDefere: false, isRelax: false, amende: "600", law: "Art. L. 313-4 et L. 313-6 du CJF", gestionnaires: "Président de l'AGS, Directeur de la délégation UNEDIC-AGS", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/20151116-arret-203-720-AGS.pdf" },
+            { title: "FNSP-IEP-PARIS", year: "04/12/2015", crc: "CDBF", realCoords: [48.8540, 2.3280], num: "n°204-727", jo: true, isDefere: false, isRelax: false, amende: "1500", law: "Art. L. 313-4 du CJF", gestionnaires: "Président du conseil d'administration, DRH", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/20151204-arret-204-727-FNSP-IEP.pdf" },
+            { title: "ANTS", year: "22/04/2016", crc: "CDBF", realCoords: [48.8900, 2.3300], num: "n°207-745", jo: true, isDefere: false, isRelax: false, amende: "3000", law: "Art. L. 313-1, L. 313-3 et L. 313-4 du CJF", gestionnaires: "Directeurs de l'ANTS, directeur adjoint ", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/20160422-affaire-207-745-ANTS.pdf" },
+            { title: "EHPAD du Durtal", year: "14/06/2016", crc: "CRC PAYS DE LA LOIRE", realCoords: [47.6719, -0.2447], crcCoords: [47.2184, -1.5536], num: "n°208-737", jo: true, isDefere: true, isRelax: false, amende: "1500", law: "Art. L. 313-4 du CJF", gestionnaires: "Directeur d'EHPAD (D3S)", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/Arret-208-737-EHPAD-Durtal.pdf" },
+            { title: "Loi GIRARDIN", year: "21/07/2016", crc: "CDBF", realCoords: [48.8400, 2.3100], num: "n°210-722", jo: true, isDefere: false, isRelax: false, amende: "650", law: "Art. L. 313-3 et L. 313-4 du CJF ", gestionnaires: "Directeur de cabinet du ministre du budget, conseiller technique au cabinet du ministre responsable de la cellule fiscale", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/20160721-arret-210-722-Agrement-derogatoire-operation-defiscalisation-relevant-loi-23072003-loi-Girardin.pdf" },
+            { title: "CH de Givors", year: "16/11/2016", crc: "CRC AUVERGNE-RHÔNE-ALPES", realCoords: [45.5847, 4.7733], crcCoords: [45.7640, 4.8357], num: "n°211-739", jo: false, isDefere: true, isRelax: false, amende: "0", law: "Art. L. 313-4 et L. 313-6 du CJF", gestionnaires: "Directeurs d'hôpitaux", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/20161116-arret-211-739-Centre-hospitalier-Givors.pdf" },
+            { title: "CIPAV", year: "30/12/2016", crc: "CDBF", realCoords: [48.8750, 2.3000], num: "n°212-735", jo: true, isDefere: false, isRelax: false, amende: "500", law: "Art. L. 313-4 et L. 313-6 du CJF", gestionnaires: "Directeur de la CIPAV et directeur de caisses de protection sociale", url: "https://www.ccomptes.fr/sites/default/files/EzPublish/20161230-Arret-212-735-II-CIPAV.pdf" }
+        ];
+
+        let map, markersLayer;
+
+        function enterSite() {
+            document.getElementById('hero-section').style.opacity = '0';
+            setTimeout(() => {
+                document.getElementById('hero-section').style.display = 'none';
+                initMap();
+                initSearch();
+                showDashboard(); 
+            }, 500);
+        }
+
+        function initMap() {
+            map = L.map('map', { zoomControl: false }).setView([46.5, 2], 6);
+            L.control.zoom({ position: 'bottomleft' }).addTo(map);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png').addTo(map);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png', { opacity: 0.6 }).addTo(map);
+            markersLayer = L.layerGroup().addTo(map);
+            updateMarkers();
+        }
+
+        function getDecisionBadge(d) {
+            let badges = d.isRelax ? '<span class="badge badge-relax">RELAXE</span>' : '';
+            badges += d.jo ? '<span class="badge badge-jo">JO</span>' : '<span class="badge badge-nonjo">NON JO</span>';
+            
+            // Ajout sélectif du badge RECOURS CASSATION
+            const cassationList = ["Institut géographique national (IGN)", "CH Marigot à St-Martin", "Conseil économique et social (CES)", "CH intercommunal de la Lauter", "AP-HM", "Port autonome de Marseille"];
+            if (cassationList.includes(d.title)) {
+                badges += '<span class="badge badge-cassation">RECOURS CASSATION</span>';
+            }
+            
+            return badges;
+        }
+
+        function updateMarkers() {
+            markersLayer.clearLayers();
+            const showCRCGroup = document.getElementById('filter-defere').checked;
+            const fJo = document.getElementById('f-jo').checked;
+            const fNonJo = document.getElementById('f-nonjo').checked;
+            const fRelax = document.getElementById('f-relax').checked;
+
+            const filtered = allDecisions.filter(d => {
+                const categoryMatch = d.jo ? fJo : fNonJo;
+                if (d.isRelax) {
+                    if (!fRelax) return false;
+                    return categoryMatch || (!fJo && !fNonJo);
+                }
+                return categoryMatch;
+            });
+
+            if (showCRCGroup) {
+                const groups = {};
+                filtered.filter(d => d.isDefere).forEach(d => {
+                    if (!groups[d.crc]) groups[d.crc] = { coords: d.crcCoords, items: [] };
+                    groups[d.crc].items.push(d);
+                });
+
+                Object.keys(groups).forEach(name => {
+                    const g = groups[name];
+                    const icon = L.divIcon({
+                        html: `<div style="background:var(--blue-dark); width:28px; height:28px; border-radius:50%; border:3px solid white; box-shadow:0 3px 10px rgba(0,0,0,0.3); color:white; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:bold;">${g.items.length}</div>`,
+                        className: '', iconSize: [28, 28]
+                    });
+                    L.marker(g.coords, { icon }).addTo(markersLayer).on('click', () => showGroupInPanel(name, g.items));
+                });
+            } else {
+                filtered.forEach(d => {
+                    const color = d.isRelax ? 'var(--relax-gold)' : (d.jo ? 'var(--jo-green)' : 'var(--red-alert)');
+                    const icon = L.divIcon({
+                        html: `<div style="background:${color}; width:16px; height:16px; border-radius:50%; border:2px solid white; box-shadow:0 2px 5px rgba(0,0,0,0.2);"></div>`,
+                        className: '', iconSize: [16, 16]
+                    });
+                    L.marker(d.realCoords, { icon }).addTo(markersLayer).on('click', () => showDecisionInPanel(d));
+                });
+            }
+        }
+
+        function showDashboard() {
+            document.getElementById('panel-title').innerText = "TABLEAU DE BORD";
+            const body = document.getElementById('panel-body');
+            
+            const total = allDecisions.length;
+            const relaxes = allDecisions.filter(d => d.isRelax).length;
+            const condamnes = total - relaxes;
+
+            const montants = allDecisions
+                .map(d => {
+                    if (typeof d.amende === 'string') {
+                        return parseFloat(d.amende.replace(/\s/g, ''));
+                    }
+                    return d.amende;
+                })
+                .filter(val => !isNaN(val) && val > 0);
+            
+            const totalAmendes = montants.reduce((a, b) => a + b, 0);
+            const moyenneAmende = montants.length > 0 ? Math.round(totalAmendes / montants.length) : 0;
+
+            body.innerHTML = `
+                <div class="stat-card">
+                    <span class="stat-val">${total}</span>
+                    <span class="stat-label">Décisions analysées</span>
+                </div>
+                <div class="stat-card" style="border-left-color: var(--relax-gold);">
+                    <span class="stat-val">${relaxes}</span>
+                    <span class="stat-label">Relaxes prononcées</span>
+                </div>
+                
+                <h3 style="font-size: 0.85rem; color: var(--blue-dark); margin: 25px 0 15px 0; border-bottom: 1px solid #eee; padding-bottom: 5px;">RÉPARTITION</h3>
+                <canvas id="statChart" style="max-height: 180px; margin-bottom: 20px;"></canvas>
+                
+                <h3 style="font-size: 0.85rem; color: var(--blue-dark); margin: 25px 0 15px 0; border-bottom: 1px solid #eee; padding-bottom: 5px;">VOLUME FINANCIER</h3>
+                <div class="stat-card" style="border-left-color: var(--red-alert);">
+                    <span class="stat-val">${totalAmendes.toLocaleString()}€</span>
+                    <span class="stat-label">Somme totale des amendes</span>
+                </div>
+                <div class="stat-card" style="border-left-color: var(--blue-light);">
+                    <span class="stat-val">${moyenneAmende.toLocaleString()} €</span>
+                    <span class="stat-label">Amende moyenne (condamnations)</span>
+                </div>
+            `;
+
+            const ctx = document.getElementById('statChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Relaxes', 'Condamnations'],
+                    datasets: [{
+                        data: [relaxes, condamnes],
+                        backgroundColor: ['#C5A028', '#1E2A47'],
+                        borderWidth: 0
+                    }]
+                },
+                options: { 
+                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } },
+                    cutout: '70%'
+                }
+            });
+        }
+
+        function showDecisionInPanel(d) {
+            document.getElementById('panel-title').innerText = "FICHE DE LA DÉCISION";
+            const body = document.getElementById('panel-body');
+            
+            let displayAmende = d.amende;
+            if (!isNaN(parseFloat(d.amende)) && d.amende !== "0") {
+                displayAmende = parseInt(d.amende).toLocaleString() + " €";
+            } else if (d.amende === "0") {
+                displayAmende = "Pas d'amende";
+            }
+
+            let sanctionBlock = '';
+            if (d.isRelax) {
+                sanctionBlock = `<p><span style="font-size:1.1rem; font-weight:bold; color:var(--relax-gold);">Relaxe</span></p>`;
+            } else {
+                sanctionBlock = `
+                    <p><strong>Sanction :</strong><br>
+                    <span style="font-size:1.1rem; font-weight:bold; color:var(--red-alert);">${displayAmende}</span></p>
+                    <p><strong>Base(s) légale(s) retenue(s) :</strong><br>${d.law}</p>
+${d.recours ? `
+            <p style="margin-top:10px; padding:8px; background:#f0f0f7; border-left:3px solid var(--purple-cassation); font-size:0.9rem;">
+                <strong style="color:var(--purple-cassation);">État du recours en cassation :</strong><br>
+                ${d.recours}
+            </p>
+                ` : ''}
+                `; 
+            } 
+
+            body.innerHTML = `
+                <button class="btn-dashboard" onclick="showDashboard()">← RETOUR AUX STATISTIQUES</button>
+                <div style="margin-bottom:20px;">${getDecisionBadge(d)}</div>
+                <h2 style="color:var(--blue-dark); margin-top:0; font-size: 1.3rem;">${d.title}</h2>
+                <p style="font-size:1rem; font-weight:bold; color:#666;">Arrêt ${d.num} du ${d.year}</p>
+                <hr style="border:0; border-top:1px solid #eee; margin:20px 0;">
+                <p><strong>Saisine :</strong><br>${d.isDefere ? "Déféré de CRTC (Anc. Art. L. 314-1 al. 7 du CJF)" : "Déféré d'autres organes (Anc. Art. L. 314-1 al. 5, 6, 10) "}</p>
+                <p><strong>Gestionnaire(s) mis en cause :</strong><br>${d.gestionnaires}</p>
+                
+                ${sanctionBlock}
+
+                <div style="margin-top:40px;">
+                    <a href="${d.url}" target="_blank" style="text-decoration:none;">
+                        <button style="display:block; width:100%; background:var(--blue-dark); color:white; border:none; padding:12px; border-radius:8px; font-weight:bold; cursor:pointer;">
+                            VOIR LA DÉCISION DE LA CDBF
+                        </button>
+                    </a>
+
+${d.ceUrl ? `
+                        <a href="${d.ceUrl}" target="_blank" style="text-decoration:none; display:block; margin-top:10px;">
+                            <button style="display:block; width:100%; background:var(--blue-dark); color:white; border:none; padding:12px; border-radius:8px; font-weight:bold; cursor:pointer;">
+                                VOIR LA DÉCISION DU CONSEIL D'ÉTAT
+                            </button>
+                        </a>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        function showGroupInPanel(name, items) {
+            document.getElementById('panel-title').innerText = name;
+            const body = document.getElementById('panel-body');
+            
+            let list = items.map(d => {
+                const globalIndex = allDecisions.findIndex(item => item.num === d.num);
+                return `
+                    <div onclick='showDecisionInPanel(allDecisions[${globalIndex}])' style="padding:15px; border:1px solid #eee; border-radius:8px; margin-bottom:12px; cursor:pointer; background:#fcfcfc;">
+                        <div style="font-weight:bold; color:var(--blue-dark); font-size:0.9rem;">${d.title} (${d.year})</div>
+                        <div style="margin-top:8px;">${getDecisionBadge(d)}</div>
+                    </div>
+                `;
+            }).join('');
+
+            body.innerHTML = `
+                <button class="btn-dashboard" onclick="showDashboard()">← RETOUR AUX STATS</button>
+                <p style="color:#666; margin-bottom:20px; font-size: 0.9rem;">${items.length} dossier(s) transmis :</p>
+                ${list}
+            `;
+        }
+
+        function initSearch() {
+            const box = document.getElementById('searchBox');
+            const res = document.getElementById('resultsBox');
+            box.addEventListener('input', (e) => {
+                const val = e.target.value.toLowerCase();
+                res.innerHTML = '';
+                if (val.length < 2) { res.style.display = 'none'; return; }
+                const matches = allDecisions.filter(d => 
+                    d.title.toLowerCase().includes(val) || 
+                    d.num.toLowerCase().includes(val)
+                );
+                if (matches.length > 0) {
+                    res.style.display = 'block';
+                    matches.forEach(m => {
+                        const div = document.createElement('div');
+                        div.className = 'result-item';
+                        div.innerHTML = `<span><small>${m.num}</small> - <strong>${m.title}</strong></span> <div>${getDecisionBadge(m)}</div>`;
+                        div.onclick = () => { 
+                            showDecisionInPanel(m); 
+                            res.style.display = 'none'; 
+                            box.value = m.title; 
+                            map.setView(m.realCoords, 10);
+                        };
+                        res.appendChild(div);
+                    });
+                } else { res.style.display = 'none'; }
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!box.contains(e.target)) res.style.display = 'none';
+            });
+        }
+
+        function closePanel() {
+            showDashboard();
+        }
+    </script>
+</body>
+</html>
